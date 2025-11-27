@@ -1,23 +1,63 @@
-name: Deploy Simple Mode
+name: Deploy Simple Mode from Upstream
+
 on:
-  push:
-    branches: [ main ]
+  # Run this workflow manually from the Actions tab
+  workflow_dispatch:
+  # Optional: Run automatically on a schedule (e.g., every Sunday at midnight)
+  # schedule:
+  #   - cron: '0 0 * * 0'
+
+permissions:
+  contents: write
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Install and Build
-        run: |
-          npm install
-          # We set the environment variable here to enable Simple Mode
-          export SIMPLE_MODE=true 
-          npm run build
-
-      - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4
+      # 1. Checkout the OFFICIAL BentoPDF repository
+      - name: Checkout Upstream BentoPDF
+        uses: actions/checkout@v4
         with:
-          folder: dist
+          repository: alam00000/bentopdf
+          ref: main
+
+      # 2. Setup Node.js
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 3. Install Dependencies
+      - name: Install Dependencies
+        run: npm ci
+
+      # 4. Inject Base Path for GitHub Pages
+      # This is critical. Without this, your site will show a blank white screen.
+      # We use 'sed' to add the base path configuration to vite.config.ts
+      - name: Configure Base Path
+        run: |
+          sed -i "s/export default defineConfig({/export default defineConfig({ base: '\/simplebentopdf\/',/" vite.config.ts
+          
+          # Verify the change (optional debugging)
+          grep "base:" vite.config.ts
+
+      # 5. Build in Simple Mode
+      # We set both common variable naming patterns just to be safe
+      - name: Build Simple Mode
+        run: npm run build
+        env:
+          SIMPLE_MODE: true
+          VITE_SIMPLE_MODE: true
+
+      # 6. Fix 404 Routing on GitHub Pages
+      # Copies index.html to 404.html so refreshing pages works
+      - name: Fix 404 Routing
+        run: cp dist/index.html dist/404.html
+
+      # 7. Deploy to YOUR repository's gh-pages branch
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true
